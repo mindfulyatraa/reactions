@@ -35,12 +35,18 @@ jobs:
       env:
         YOUTUBE_CLIENT_SECRETS: ${{ secrets.YOUTUBE_CLIENT_SECRETS }}
         YOUTUBE_TOKEN_PICKLE: ${{ secrets.YOUTUBE_TOKEN_PICKLE }}
+        YOUTUBE_COOKIES: ${{ secrets.YOUTUBE_COOKIES }}
       run: |
         # Create client_secrets.json from secret
         echo "$YOUTUBE_CLIENT_SECRETS" > client_secrets.json
         
         # Create youtube_token.pickle from base64 secret
         echo "$YOUTUBE_TOKEN_PICKLE" | base64 -d > youtube_token.pickle
+
+        # Create cookies.txt if secret exists
+        if [ -n "$YOUTUBE_COOKIES" ]; then
+          echo "$YOUTUBE_COOKIES" > cookies.txt
+        fi
 
     - name: Run Bot Batch
       run: python run_batch.py
