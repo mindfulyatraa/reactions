@@ -223,24 +223,31 @@ class ViralVideoBot:
             
             # For YouTube videos
             elif video_info['source'] == 'youtube':
-                ydl_opts = {
-                    'format': 'best[ext=mp4]',
-                    'outtmpl': str(output_path),
-                    'overwrites': True,
-                    'quiet': True,
-                    'no_warnings': True,
-                    'extractor_args': {'youtube': {'player_client': ['android', 'web']}},
-                    'socket_timeout': 30,
-                }
-                try:
-                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                        ydl.download([video_info['url']])
-                    if os.path.exists(output_path):
-                        logging.info(f"Downloaded successfully: {output_path}")
-                        return True
-                except Exception as e:
-                    logging.error(f"yt-dlp error: {e}")
-                    return False
+                clients_to_try = [['android'], ['ios'], ['web_creator'], ['mweb']]
+                
+                for client in clients_to_try:
+                    logging.info(f"Trying download with client: {client[0]}...")
+                    ydl_opts = {
+                        'format': 'best[ext=mp4]',
+                        'outtmpl': str(output_path),
+                        'overwrites': True,
+                        'quiet': True,
+                        'no_warnings': True,
+                        'extractor_args': {'youtube': {'player_client': client}},
+                        'socket_timeout': 30,
+                    }
+                    try:
+                        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                            ydl.download([video_info['url']])
+                        if os.path.exists(output_path):
+                            logging.info(f"Downloaded successfully with {client[0]}: {output_path}")
+                            return True
+                    except Exception as e:
+                        logging.error(f"Failed with {client[0]}: {e}")
+                        continue
+                
+                logging.error("All download attempts failed.")
+                return False
             
             return False
             
