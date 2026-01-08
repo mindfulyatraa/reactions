@@ -236,6 +236,11 @@ class ViralVideoBot:
                         'extractor_args': {'youtube': {'player_client': client}},
                         'socket_timeout': 30,
                     }
+                    
+                    # Use cookies if available (Bypasses Bot Check)
+                    if os.path.exists('cookies.txt'):
+                        ydl_opts['cookiefile'] = 'cookies.txt'
+                        
                     try:
                         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                             ydl.download([video_info['url']])
