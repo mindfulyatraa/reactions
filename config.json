@@ -1,0 +1,38 @@
+{
+    "search_keywords": [
+        "funny pets",
+        "viral funny",
+        "cute animals",
+        "unexpected",
+        "hilarious",
+        "comedy gold"
+    ],
+    "min_views": 100000,
+    "max_video_duration": 60,
+    "check_interval_minutes": 30,
+    "output_dir": "output_videos",
+    "reaction_dir": "reaction_videos",
+    "upload_platforms": [
+        "youtube"
+    ],
+    "reddit_subreddits": [
+        "funny",
+        "aww",
+        "unexpected",
+        "PublicFreakout"
+    ],
+    "video_quality": "720p",
+    "text_overlay": {
+        "enabled": true,
+        "text": "Wait for it... 😂",
+        "font_size": 70,
+        "font_color": "white",
+        "stroke_color": "black",
+        "stroke_width": 4,
+        "position_top": 80
+    },
+    "video_layout": {
+        "reaction_top_percent": 40,
+        "viral_bottom_percent": 60
+    }
+}
