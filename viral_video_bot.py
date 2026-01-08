@@ -146,7 +146,7 @@ class ViralVideoBot:
             request = self.youtube_uploader.youtube.search().list(
                 part="snippet",
                 maxResults=20,
-                q="funny shorts viral",
+                q="viral shorts",
                 regionCode=self.config.get('youtube_region', 'US'),
                 type="video",
                 videoDuration="short",  # Filter for potential Shorts (< 4 mins)

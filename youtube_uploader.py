@@ -29,8 +29,12 @@ class YouTubeUploader:
         
         # Check if we have saved credentials
         if os.path.exists(TOKEN_FILE):
-            with open(TOKEN_FILE, 'rb') as token:
-                creds = pickle.load(token)
+            try:
+                with open(TOKEN_FILE, 'rb') as token:
+                    creds = pickle.load(token)
+            except Exception as e:
+                logging.error(f"Error loading token pickle: {e}")
+                creds = None
         
         # If credentials don't exist or are invalid, get new ones
         if not creds or not creds.valid:
