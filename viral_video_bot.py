@@ -223,13 +223,14 @@ class ViralVideoBot:
             
             # For YouTube videos
             elif video_info['source'] == 'youtube':
-                import yt_dlp
                 ydl_opts = {
                     'format': 'best[ext=mp4]',
                     'outtmpl': str(output_path),
                     'overwrites': True,
                     'quiet': True,
-                    'no_warnings': True
+                    'no_warnings': True,
+                    'extractor_args': {'youtube': {'player_client': ['android', 'web']}},
+                    'socket_timeout': 30,
                 }
                 try:
                     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
