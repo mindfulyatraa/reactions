@@ -131,6 +131,80 @@ class ViralVideoBot:
                 logging.error(f"Error searching Reddit r/{subreddit}: {str(e)}")
         
         return viral_videos
+
+    def search_viral_videos_youtube(self):
+        """Search for viral Shorts on YouTube (USA Region)"""
+        if not self.youtube_uploader or not self.youtube_uploader.youtube:
+            logging.error("YouTube API not initialized. Cannot search videos.")
+            return []
+            
+        logging.info("Searching YouTube for viral Shorts in USA...")
+        video_list = []
+        
+        try:
+            # 1. Search for popular videos in US
+            request = self.youtube_uploader.youtube.search().list(
+                part="snippet",
+                maxResults=20,
+                q="funny shorts viral",
+                regionCode=self.config.get('youtube_region', 'US'),
+                type="video",
+                videoDuration="short",  # Filter for potential Shorts (< 4 mins)
+                order="viewCount",      # Get most viewed
+                relevanceLanguage="en"
+            )
+            response = request.execute()
+            
+            for item in response.get('items', []):
+                video_limit = 5 # Process max 5 videos per run
+                if len(video_list) >= video_limit:
+                    break
+                    
+                video_id = item['id']['videoId']
+                
+                # Check if already processed
+                if video_id in self.processed_videos:
+                    continue
+                
+                # Get video details (to check actual duration and view count)
+                vid_request = self.youtube_uploader.youtube.videos().list(
+                    part="contentDetails,statistics,snippet",
+                    id=video_id
+                )
+                vid_response = vid_request.execute()
+                
+                if not vid_response.get('items'):
+                    continue
+                    
+                details = vid_response['items'][0]
+                
+                # Verify it's a Short (< 60s)
+                # Simple check: skip if duration string has 'M' (minutes) unless it's exactly 1 min
+                duration_str = details['contentDetails']['duration']
+                if "M" in duration_str and "PT1M0S" not in duration_str: 
+                     continue
+                
+                view_count = int(details['statistics'].get('viewCount', 0))
+                if view_count < self.config['min_views']:
+                    continue
+                
+                # Add to list
+                video_info = {
+                    'id': video_id,
+                    'url': f"https://www.youtube.com/watch?v={video_id}",
+                    'title': details['snippet']['title'],
+                    'author': details['snippet']['channelTitle'],
+                    'views': view_count,
+                    'source': 'youtube'
+                }
+                
+                video_list.append(video_info)
+                logging.info(f"Found viral video: {video_info['title']} ({video_info['views']} views)")
+                
+        except Exception as e:
+            logging.error(f"Error searching YouTube: {e}")
+            
+        return video_list
     
     def download_video(self, video_info, output_path):
         """Download video from URL"""
@@ -140,16 +214,33 @@ class ViralVideoBot:
             # For Reddit videos
             if video_info['source'] == 'reddit':
                 video_url = video_info['url']
-                
                 response = requests.get(video_url, stream=True, timeout=30)
-                
                 if response.status_code == 200:
                     with open(output_path, 'wb') as f:
                         for chunk in response.iter_content(chunk_size=8192):
                             f.write(chunk)
-                    
                     logging.info(f"Downloaded successfully: {output_path}")
                     return True
+            
+            # For YouTube videos
+            elif video_info['source'] == 'youtube':
+                import yt_dlp
+                ydl_opts = {
+                    'format': 'best[ext=mp4]',
+                    'outtmpl': str(output_path),
+                    'overwrites': True,
+                    'quiet': True,
+                    'no_warnings': True
+                }
+                try:
+                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                        ydl.download([video_info['url']])
+                    if os.path.exists(output_path):
+                        logging.info(f"Downloaded successfully: {output_path}")
+                        return True
+                except Exception as e:
+                    logging.error(f"yt-dlp error: {e}")
+                    return False
             
             return False
             
@@ -396,7 +487,10 @@ class ViralVideoBot:
                 logging.info("Searching for viral videos...")
                 
                 # Search for viral videos
-                viral_videos = self.search_viral_videos_reddit()
+                if self.config.get('source_platform') == 'youtube':
+                    viral_videos = self.search_viral_videos_youtube()
+                else:
+                    viral_videos = self.search_viral_videos_reddit()
                 
                 logging.info(f"Found {len(viral_videos)} new viral videos")
                 
