@@ -102,10 +102,15 @@ class ViralVideoBot:
             try:
                 # Reddit API endpoint (public JSON)
                 url = f"https://www.reddit.com/r/{subreddit}/top.json?t=day&limit=10"
-                headers = {'User-Agent': 'ViralVideoBot/1.0'}
+                # Use browser user-agent to avoid 429/403 errors
+                headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
                 
                 response = requests.get(url, headers=headers, timeout=10)
                 
+                if response.status_code != 200:
+                    logging.warning(f"Reddit API returned status {response.status_code} for r/{subreddit}")
+                    continue
+                    
                 if response.status_code == 200:
                     data = response.json()
                     
