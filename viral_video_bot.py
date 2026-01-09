@@ -98,80 +98,100 @@ class ViralVideoBot:
         """Search for viral videos on Reddit"""
         viral_videos = []
         
+    def search_viral_videos_reddit(self):
+        """Search for viral videos on Reddit using RSS feeds (Most robust method)"""
+        viral_videos = []
+        import xml.etree.ElementTree as ET
+        
         for subreddit in self.config['reddit_subreddits']:
             try:
-                # Use old.reddit.com for easier HTML parsing
-                url = f"https://old.reddit.com/r/{subreddit}/top/?t=day"
+                # Use RSS feed - Reddit's most open API
+                # Atom format is standard
+                url = f"https://www.reddit.com/r/{subreddit}/top/.rss?t=day&limit=10"
                 
                 # Robust browser headers
                 headers = {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-                    'Accept-Language': 'en-US,en;q=0.5',
-                    'Referer': 'https://www.google.com/'
+                    'Accept': 'application/xml,application/atom+xml,text/html,*/*;q=0.9'
                 }
                 
                 response = requests.get(url, headers=headers, timeout=15)
                 
                 if response.status_code == 200:
-                    import re
-                    # Regex to find posts with data-url (media) and data-permalink
-                    # Look for things that are videos (v.redd.it or youtube)
-                    
-                    # Pattern for post elements in old reddit
-                    # We look for <div class="... thing ..." data-url="..." data-permalink="...">
-                    
-                    # Simple regex to find data blocks
-                    matches = re.finditer(r'data-url="(?P<url>[^"]+)"[^>]*data-permalink="(?P<permalink>[^"]+)"[^>]*data-score="(?P<score>\d+)"[^>]*data-promoted="false"', response.text)
-                    
-                    for match in matches:
-                        video_url = match.group('url')
-                        permalink = match.group('permalink')
-                        score = int(match.group('score'))
+                    try:
+                        # Parse XML (Atom format)
+                        root = ET.fromstring(response.text)
                         
-                        # Filter criteria
-                        if score < self.config['min_views']:
-                            continue
+                        # Handle namespaces (Atom usually has one)
+                        # We'll just search by local name to be safe/lazy or use the known namespace
+                        # Reddit RSS is typically Atom 1.0 -> {http://www.w3.org/2005/Atom}
+                        
+                        namespace = {'atom': 'http://www.w3.org/2005/Atom'} 
+                        # Fallback if namespace detection fails or changes
+                        # We simply iterate children
+                        
+                        entries = root.findall('atom:entry', namespace)
+                        if not entries:
+                            # Try without namespace or verify root tag
+                            entries = root.findall('{http://www.w3.org/2005/Atom}entry')
                             
-                        # Must be a video link
-                        if 'v.redd.it' not in video_url and 'youtube.com' not in video_url and 'youtu.be' not in video_url:
-                            continue
+                        for entry in entries:
+                            # Extract Title
+                            title_elem = entry.find('atom:title', namespace)
+                            if title_elem is None:
+                                title_elem = entry.find('{http://www.w3.org/2005/Atom}title')
+                            title = title_elem.text if title_elem is not None else "Viral Video"
                             
-                        # Extract title (this is harder with regex, let's grab it from the link text if possible, or just use permalink as ID)
-                        # Actually for old reddit, title is in <a class="title ...">...</a> inside the thing div. 
-                        # Let's try to extract title from the HTML block around the match if possible, or simpler: 
-                        # Just accept we have the ID/URL. Title is secondary for processing (yt-dlp will get it).
+                            # Extract Link (href attribute)
+                            link_elem = entry.find('atom:link', namespace)
+                            if link_elem is None:
+                                link_elem = entry.find('{http://www.w3.org/2005/Atom}link')
+                                
+                            if link_elem is not None:
+                                permalink = link_elem.attrib.get('href', '')
+                                
+                                # We have the post URL. 
+                                # In RSS, "score" is not easily available in attributes.
+                                # But we requested "top", so these ARE the top videos.
+                                # We trust the sort.
+                                
+                                # Generate ID from URL
+                                # URL ex: https://www.reddit.com/r/funny/comments/1q7b9sv/title/
+                                try:
+                                    parts = permalink.split('/comments/')
+                                    if len(parts) > 1:
+                                        vid_id = parts[1].split('/')[0]
+                                    else:
+                                        # Fallback ID generation
+                                        vid_id = str(abs(hash(permalink)))[:8]
+                                except:
+                                    vid_id = str(abs(hash(permalink)))[:8]
+                                
+                                video_info = {
+                                    'id': vid_id,
+                                    'title': title,
+                                    'url': permalink,
+                                    'score': 10000, # Dummy high score since it's from top list
+                                    'source': 'reddit',
+                                    'subreddit': subreddit
+                                }
+                                
+                                if video_info['id'] not in self.processed_videos:
+                                    viral_videos.append(video_info)
+                                    logging.info(f"Found viral video (RSS): {title[:50]}...")
+                                    
+                    except ET.ParseError as e:
+                        logging.error(f"Error parsing RSS XML for r/{subreddit}: {e}")
                         
-                        video_info = {
-                            'id': permalink.split('/')[-2],
-                            'title': f"Viral Video {permalink.split('/')[-2]}", # Temp title
-                            'url': f"https://www.reddit.com{permalink}",
-                            'score': score,
-                            'source': 'reddit',
-                            'subreddit': subreddit
-                        }
-                        
-                        # Try to find real title
-                        try:
-                            # Re-search for title relative to this permalink
-                            title_pattern = f'href="{permalink}"[^>]*>(?P<title>[^<]+)</a>'
-                            title_match = re.search(title_pattern, response.text)
-                            if title_match:
-                                video_info['title'] = title_match.group('title')
-                        except:
-                            pass
-
-                        if video_info['id'] not in self.processed_videos:
-                            viral_videos.append(video_info)
-                            logging.info(f"Found viral video: {video_info['title'][:50]}... (Score: {score})")
-
                 else:
-                    logging.warning(f"Reddit HTML scrape failed: {response.status_code} for r/{subreddit}")
+                    logging.warning(f"Reddit RSS access failed: {response.status_code} for r/{subreddit}")
                     
                 time.sleep(2)
                 
             except Exception as e:
                 logging.error(f"Error searching Reddit r/{subreddit}: {str(e)}")
+        
+        return viral_videos
         
         return viral_videos
 
