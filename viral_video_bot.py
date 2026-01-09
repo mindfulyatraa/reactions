@@ -351,12 +351,35 @@ class ViralVideoBot:
                     'Sec-Fetch-Mode': 'navigate',
                 }
                 
-                # Use android client (best compatibility)
+                # Use android client (best compatibility for avoiding blocks)
                 ydl_opts['extractor_args'] = {
                     'youtube': {
-                        'player_client': ['android', 'ios'],  # Fallback chain
-                        'skip': ['hls', 'dash'],  # Prefer direct downloads
+                        'player_client': ['android', 'ios'],
+                    },
+                    'reddit': {
+                        'user_agent': ['android'] 
                     }
+                }
+                
+                # Force IPv4 and use specific user agent for the http request
+                ydl_opts['force_ipv4'] = True
+                
+                # Update Referer to be the specific permalink if available, else generic
+                # We need to pass permalink from video_info if we have it
+                # But here we only have video_info['url'] which might be the direct link
+                # We'll try to use the direct link's base or just generic reddit
+                
+                # Check if we can reconstruct permalink or just use generic
+                # Actually, providing the exact post permalink as referer is verified to help
+                
+                # We will trust the passed referer in headers
+                
+                # Add specific headers for v.redd.it
+                ydl_opts['http_headers'] = {
+                    'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                    'Referer': 'https://www.reddit.com/',
+                    'Origin': 'https://www.reddit.com'
                 }
                 
                 try:
@@ -371,6 +394,22 @@ class ViralVideoBot:
                         return False
                         
                 except Exception as e:
+                    logging.warning(f"Standard download failed: {e}. Trying HLS fallback...")
+                    # Fallback: Try downloading HLS playlist directly if likely v.redd.it
+                    if "v.redd.it" in video_info['url']:
+                        try:
+                            # HLS/DASH URLs usually look like base + HLSPlaylist.m3u8
+                            hls_url = video_info['url'].rstrip('/') + "/HLSPlaylist.m3u8"
+                            logging.info(f"Attempting HLS fallback: {hls_url}")
+                            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                                ydl.download([hls_url])
+                            
+                            if os.path.exists(output_path):
+                                logging.info("HLS Fallback successful!")
+                                return True
+                        except Exception as hls_e:
+                            logging.error(f"HLS Fallback failed: {hls_e}")
+
                     if "Sign in to confirm" in str(e) and not proxy_url:
                         logging.warning("Bot detection triggered. Consider adding PROXY_URL secret for YouTube downloads.")
                         logging.info("Tip: Set PROXY_URL in GitHub Secrets (format: http://user:pass@proxy.com:port)")
