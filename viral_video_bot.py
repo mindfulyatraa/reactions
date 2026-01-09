@@ -206,11 +206,11 @@ class ViralVideoBot:
         return video_list
     
     def download_video(self, video_info, output_path):
-        """Download video from URL"""
+        """Download video with multiple fallback strategies"""
         try:
             logging.info(f"Downloading video: {video_info['title'][:50]}...")
             
-            # For Reddit videos
+            # Strategy 1: Reddit videos (most reliable on GitHub Actions)
             if video_info['source'] == 'reddit':
                 video_url = video_info['url']
                 response = requests.get(video_url, stream=True, timeout=30)
@@ -221,29 +221,58 @@ class ViralVideoBot:
                     logging.info(f"Downloaded successfully: {output_path}")
                     return True
             
-            # For YouTube videos - use android client (no cookies needed)
+            # Strategy 2: YouTube videos with enhanced anti-detection
             elif video_info['source'] == 'youtube':
+                proxy_url = os.getenv('PROXY_URL')  # Optional proxy from GitHub Secrets
+                
+                # Base yt-dlp options
                 ydl_opts = {
-                    'format': 'best[ext=mp4]',
+                    'format': 'best[ext=mp4][height<=720]',
                     'outtmpl': str(output_path),
                     'overwrites': True,
-                    'extractor_args': {
-                        'youtube': {
-                            'player_client': ['android'],  # Android works without cookies
-                        }
-                    },
                     'socket_timeout': 30,
+                    'retries': 3,
+                    'fragment_retries': 3,
                 }
                 
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    ydl.download([video_info['url']])
+                # Add proxy if available (bypasses bot detection)
+                if proxy_url:
+                    logging.info("Using proxy for YouTube download")
+                    ydl_opts['proxy'] = proxy_url
                 
-                if os.path.exists(output_path):
-                    logging.info(f"Downloaded successfully: {output_path}")
-                    return True
-                else:
-                    logging.error("Download failed - file not created")
-                    return False
+                # Enhanced anti-detection: Spoof real Android YouTube app
+                ydl_opts['http_headers'] = {
+                    'User-Agent': 'com.google.android.youtube/17.36.4 (Linux; U; Android 12; en_US) gzip',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                    'Accept-Language': 'en-us,en;q=0.5',
+                    'Accept-Encoding': 'gzip, deflate',
+                    'Sec-Fetch-Mode': 'navigate',
+                }
+                
+                # Use android client (best compatibility)
+                ydl_opts['extractor_args'] = {
+                    'youtube': {
+                        'player_client': ['android', 'ios'],  # Fallback chain
+                        'skip': ['hls', 'dash'],  # Prefer direct downloads
+                    }
+                }
+                
+                try:
+                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                        ydl.download([video_info['url']])
+                    
+                    if os.path.exists(output_path):
+                        logging.info(f"Downloaded successfully: {output_path}")
+                        return True
+                    else:
+                        logging.error("Download failed - file not created")
+                        return False
+                        
+                except Exception as e:
+                    if "Sign in to confirm" in str(e) and not proxy_url:
+                        logging.warning("Bot detection triggered. Consider adding PROXY_URL secret for YouTube downloads.")
+                        logging.info("Tip: Set PROXY_URL in GitHub Secrets (format: http://user:pass@proxy.com:port)")
+                    raise  # Re-raise to be caught by outer exception handler
             
             return False
             

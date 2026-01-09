@@ -10,7 +10,7 @@
     "min_views": 100000,
     "max_video_duration": 60,
     "check_interval_minutes": 60,
-    "source_platform": "youtube",
+    "source_platform": "reddit",
     "youtube_region": "US",
     "output_dir": "output_videos",
     "reaction_dir": "reaction_videos",

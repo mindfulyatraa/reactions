@@ -36,7 +36,7 @@ jobs:
       env:
         YOUTUBE_CLIENT_SECRETS: ${{ secrets.YOUTUBE_CLIENT_SECRETS }}
         YOUTUBE_TOKEN_PICKLE: ${{ secrets.YOUTUBE_TOKEN_PICKLE }}
-        YOUTUBE_COOKIES: ${{ secrets.YOUTUBE_COOKIES }}
+        PROXY_URL: ${{ secrets.PROXY_URL }}  # Optional: For YouTube downloads
       run: |
         # Create client_secrets.json from secret
         echo "$YOUTUBE_CLIENT_SECRETS" > client_secrets.json
@@ -45,6 +45,8 @@ jobs:
         echo "$YOUTUBE_TOKEN_PICKLE" | base64 -d > youtube_token.pickle
 
     - name: Run Bot Batch
+      env:
+        PROXY_URL: ${{ secrets.PROXY_URL }}  # Optional proxy for YouTube
       run: python run_batch.py
 
     - name: Commit and Push Processed List
