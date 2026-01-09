@@ -368,16 +368,17 @@ class ViralVideoBot:
                         
                         logging.info(f"Attempting HLS download via FFmpeg: {hls_url}")
                         
+                        # Fix: Input options must come BEFORE -i
+                        # Also adding Referer via -headers for extra safety
                         cmd = [
-                            self.ffmpeg_path, '-i', hls_url,
-                            '-c', 'copy', '-bsf:a', 'aac_adtstoasc',
+                            self.ffmpeg_path,
+                            '-user_agent', headers['User-Agent'],
+                            '-headers', 'Referer: https://www.reddit.com/\r\n',
+                            '-i', hls_url,
+                            '-c', 'copy', 
+                            '-bsf:a', 'aac_adtstoasc',
                             '-y', output_path
                         ]
-                        
-                        # Run ffmpeg (mimicking a browser via headers if possible, but ffmpeg supports limited headers)
-                        # We rely on ffmpeg's native HLS handling.
-                        # Sometimes adding user-agent to ffmpeg helps: -user_agent "..."
-                        cmd.extend(['-user_agent', headers['User-Agent']])
                         
                         result = subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
                         
