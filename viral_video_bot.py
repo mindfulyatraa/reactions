@@ -4,6 +4,7 @@ import json
 import logging
 from datetime import datetime, timedelta
 import requests
+import subprocess
 from pathlib import Path
 import random
 
@@ -323,11 +324,111 @@ class ViralVideoBot:
         return viral_videos
 
     def download_video(self, video_info, output_path):
-        """Download video using yt-dlp for reliable access"""
+        """Robust download strategy: Reddit Direct -> HLS Fallback -> yt-dlp (Auth/Generic)"""
         try:
-            # Use yt-dlp for all videos (Reddit, YouTube, etc.)
-            logging.info(f"Downloading video: {video_info.get('url', video_info.get('direct_url'))}")
+            url = video_info.get('url', '')
+            direct_url = video_info.get('direct_url')
+            
+            # --- STRATEGY 1: Direct Download (Specific for Reddit v.redd.it) ---
+            if 'v.redd.it' in url or (direct_url and 'v.redd.it' in direct_url):
+                logging.info(f"Attempting Direct/HLS download for Reddit: {url}")
+                
+                # Ensure we have a direct stream URL
+                target_url = direct_url if direct_url else url
+                if not target_url.endswith('.mp4') and not 'DASH' in target_url:
+                     # This might be a raw v.redd.it link like https://v.redd.it/abcde
+                     # We assume DASH_720.mp4 for valid direct attempt, but HLS is safer
+                     target_url += '/DASH_720.mp4'
 
+                # Setup headers to mimic browser
+                headers = {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    'Referer': 'https://www.reddit.com/',
+                }
+                
+                try:
+                    # 1. Try Direct Method via Requests
+                    session = requests.Session()
+                    logging.info(f"Trying Direct Download: {target_url}")
+                    response = session.get(target_url, headers=headers, stream=True, timeout=30)
+                    
+                    if response.status_code in [200, 206]:
+                        with open(output_path, 'wb') as f:
+                            for chunk in response.iter_content(chunk_size=8192):
+                                if chunk: f.write(chunk)
+                        
+                        # Try to get audio
+                        audio_url = target_url.replace('DASH_720.mp4', 'DASH_audio.mp4')
+                        if 'DASH_audio.mp4' not in audio_url:
+                             audio_url = target_url.rsplit('/', 1)[0] + '/DASH_audio.mp4'
+                        
+                        # Just try downloading audio, ignore if fails
+                        try:
+                            audio_path = str(output_path).replace('.mp4', '_audio.mp4')
+                            audio_res = session.get(audio_url, headers=headers, stream=True, timeout=10)
+                            if audio_res.status_code == 200:
+                                with open(audio_path, 'wb') as f:
+                                    for chunk in audio_res.iter_content(chunk_size=8192):
+                                        if chunk: f.write(chunk)
+                                # Merge
+                                temp_output = str(output_path).replace('.mp4', '_merged.mp4')
+                                cmd = [
+                                    self.ffmpeg_path, '-loglevel', 'error', '-i', output_path, '-i', audio_path,
+                                    '-c:v', 'copy', '-c:a', 'aac', '-strict', 'experimental', '-y', temp_output
+                                ]
+                                subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+                                if os.path.exists(temp_output):
+                                    os.remove(output_path)
+                                    os.rename(temp_output, output_path)
+                                    os.remove(audio_path)
+                        except Exception:
+                            pass # Audio fail is non-fatal
+                        
+                        if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
+                            logging.info("✓ Direct Download successful")
+                            return True
+                            
+                except Exception as e:
+                    logging.warning(f"Direct download failed: {e}")
+
+                # 2. Try FFmpeg HLS Fallback (If direct failed or 403)
+                # This is the most robust method for v.redd.it
+                try:
+                    # Construct HLS URL based on the v.redd.it ID
+                    # url is like https://v.redd.it/xyz/DASH_720.mp4 or https://v.redd.it/xyz
+                    # base needs to be https://v.redd.it/xyz
+                    
+                    if 'DASH' in target_url:
+                        base_url = target_url.split('/DASH')[0]
+                    else:
+                        base_url = target_url.rstrip('/')
+                        
+                    hls_url = f"{base_url}/HLSPlaylist.m3u8"
+                    logging.info(f"Attempting HLS Fallback: {hls_url}")
+                    
+                    # Fix command order: options before input
+                    cmd = [
+                        self.ffmpeg_path,
+                        '-loglevel', 'error',
+                        '-user_agent', headers['User-Agent'],
+                        '-i', hls_url,
+                        '-c', 'copy', 
+                        '-bsf:a', 'aac_adtstoasc',
+                        '-y', output_path
+                    ]
+                    
+                    subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+                    
+                    if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
+                        logging.info("✓ HLS Download successful")
+                        return True
+                        
+                except Exception as e:
+                     logging.warning(f"HLS Fallback failed: {e}")
+
+            # --- STRATEGY 2: yt-dlp (YouTube, Instagram, or Reddit Fallback) ---
+            logging.info("Falling back to yt-dlp...")
+            
             ydl_opts = {
                 'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
                 'outtmpl': output_path,
@@ -339,8 +440,7 @@ class ViralVideoBot:
                 }
             }
 
-            # Add Reddit authentication if downloading from Reddit
-            url = video_info.get('url', video_info.get('direct_url', ''))
+            # Add Reddit authentication if applicable
             if 'reddit.com' in url:
                 reddit_username = os.getenv('REDDIT_USERNAME')
                 reddit_password = os.getenv('REDDIT_PASSWORD')
@@ -350,9 +450,7 @@ class ViralVideoBot:
                         'username': reddit_username,
                         'password': reddit_password,
                     })
-                    logging.info("Using Reddit authentication for download")
-                else:
-                    logging.warning("Reddit credentials not found in environment variables")
+                    logging.info("Using Reddit authentication for yt-dlp")
 
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 ydl.download([url])
@@ -360,7 +458,7 @@ class ViralVideoBot:
             return os.path.exists(output_path) and os.path.getsize(output_path) > 0
 
         except Exception as e:
-            logging.error(f"Download error with yt-dlp: {str(e)}")
+            logging.error(f"All download methods failed: {str(e)}")
             return False
     
     def create_text_overlay(self, duration, width, height):
