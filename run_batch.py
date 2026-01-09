@@ -24,8 +24,14 @@ def run_batch():
         logging.error("Reaction directory does not exist!")
 
     # Search for viral videos
-    logging.info("Searching for viral videos (YouTube/USA)...")
-    viral_videos = bot.search_viral_videos_youtube()
+    # Search for viral videos
+    source_platform = bot.config.get('source_platform', 'reddit')
+    logging.info(f"Searching for viral videos on {source_platform}...")
+    
+    if source_platform == 'youtube':
+        viral_videos = bot.search_viral_videos_youtube()
+    else:
+        viral_videos = bot.search_viral_videos_reddit()
     
     if not viral_videos:
         logging.error("No new viral videos found.")
