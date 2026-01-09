@@ -38,13 +38,19 @@ jobs:
       env:
         YOUTUBE_CLIENT_SECRETS: ${{ secrets.YOUTUBE_CLIENT_SECRETS }}
         YOUTUBE_TOKEN_PICKLE: ${{ secrets.YOUTUBE_TOKEN_PICKLE }}
+        REDDIT_USERNAME: ${{ secrets.REDDIT_USERNAME }}
+        REDDIT_PASSWORD: ${{ secrets.REDDIT_PASSWORD }}
         PROXY_URL: ${{ secrets.PROXY_URL }}  # Optional: For YouTube downloads
       run: |
         # Create client_secrets.json from secret
         echo "$YOUTUBE_CLIENT_SECRETS" > client_secrets.json
-        
+
         # Create youtube_token.pickle from base64 secret
         echo "$YOUTUBE_TOKEN_PICKLE" | base64 -d > youtube_token.pickle
+
+        # Set Reddit credentials as environment variables
+        echo "REDDIT_USERNAME=$REDDIT_USERNAME" >> $GITHUB_ENV
+        echo "REDDIT_PASSWORD=$REDDIT_PASSWORD" >> $GITHUB_ENV
 
     - name: Run Bot Batch
       env:

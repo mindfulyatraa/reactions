@@ -271,8 +271,23 @@ class ViralVideoBot:
                 }
             }
 
+            # Add Reddit authentication if downloading from Reddit
+            url = video_info.get('url', video_info.get('direct_url', ''))
+            if 'reddit.com' in url:
+                reddit_username = os.getenv('REDDIT_USERNAME')
+                reddit_password = os.getenv('REDDIT_PASSWORD')
+
+                if reddit_username and reddit_password:
+                    ydl_opts.update({
+                        'username': reddit_username,
+                        'password': reddit_password,
+                    })
+                    logging.info("Using Reddit authentication for download")
+                else:
+                    logging.warning("Reddit credentials not found in environment variables")
+
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                ydl.download([video_info.get('url', video_info.get('direct_url'))])
+                ydl.download([url])
 
             return os.path.exists(output_path) and os.path.getsize(output_path) > 0
 
