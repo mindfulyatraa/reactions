@@ -12,6 +12,7 @@ from moviepy.editor import VideoFileClip, concatenate_videoclips, CompositeVideo
 from moviepy.video.fx.resize import resize
 from PIL import Image, ImageDraw, ImageFont
 import yt_dlp
+import imageio_ffmpeg
 import numpy as np
 
 # Configure logging
@@ -116,7 +117,7 @@ class ViralVideoBot:
                             video_info = {
                                 'id': post_data['id'],
                                 'title': post_data['title'],
-                                'url': post_data['url'],
+                                'url': f"https://www.reddit.com{post_data['permalink']}",
                                 'score': post_data['score'],
                                 'source': 'reddit',
                                 'subreddit': subreddit
@@ -210,16 +211,34 @@ class ViralVideoBot:
         try:
             logging.info(f"Downloading video: {video_info['title'][:50]}...")
             
-            # Strategy 1: Reddit videos (most reliable on GitHub Actions)
+            # Strategy 1: Reddit videos (via yt-dlp - works reliably)
             if video_info['source'] == 'reddit':
-                video_url = video_info['url']
-                response = requests.get(video_url, stream=True, timeout=30)
-                if response.status_code == 200:
-                    with open(output_path, 'wb') as f:
-                        for chunk in response.iter_content(chunk_size=8192):
-                            f.write(chunk)
-                    logging.info(f"Downloaded successfully: {output_path}")
-                    return True
+                ydl_opts = {
+                    'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+                    'outtmpl': str(output_path),
+                    'overwrites': True,
+                    'socket_timeout': 30,
+                    'ffmpeg_location': imageio_ffmpeg.get_ffmpeg_exe(),
+                    'http_headers': {
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                        'Accept-Language': 'en-US,en;q=0.5',
+                        'Referer': 'https://www.reddit.com/',
+                    }
+                }
+                
+                try:
+                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                        ydl.download([video_info['url']])
+                    
+                    if os.path.exists(output_path):
+                        logging.info(f"Downloaded successfully (Reddit): {output_path}")
+                        return True
+                        
+                except Exception as e:
+                    logging.error(f"yt-dlp Reddit download failed: {str(e)}")
+                    # Fallback to requests if yt-dlp fails (rare)
+                    pass
             
             # Strategy 2: YouTube videos with enhanced anti-detection
             elif video_info['source'] == 'youtube':
