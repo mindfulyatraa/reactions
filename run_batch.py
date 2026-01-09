@@ -23,18 +23,34 @@ def run_batch():
     else:
         logging.error("Reaction directory does not exist!")
 
-    # Search for viral videos
-    # Search for viral videos
-    source_platform = bot.config.get('source_platform', 'reddit')
-    logging.info(f"Searching for viral videos on {source_platform}...")
-    
-    if source_platform == 'youtube':
-        viral_videos = bot.search_viral_videos_youtube()
-    else:
-        viral_videos = bot.search_viral_videos_reddit()
-    
+    # Search for viral videos with fallback mechanism
+    viral_videos = []
+    sources_to_try = ['reddit', 'youtube', 'instagram']  # Priority order
+
+    for source in sources_to_try:
+        logging.info(f"Trying to search viral videos on {source}...")
+
+        try:
+            if source == 'youtube':
+                videos = bot.search_viral_videos_youtube()
+            elif source == 'instagram':
+                videos = bot.search_viral_videos_instagram()
+            else:  # reddit
+                videos = bot.search_viral_videos_reddit()
+
+            if videos:
+                viral_videos = videos
+                logging.info(f"Found {len(viral_videos)} videos from {source}")
+                break  # Stop trying other sources if we found videos
+            else:
+                logging.warning(f"No videos found from {source}, trying next source...")
+
+        except Exception as e:
+            logging.error(f"Error searching {source}: {str(e)}")
+            continue  # Try next source
+
     if not viral_videos:
-        logging.error("No new viral videos found.")
+        logging.error("No new viral videos found from any source.")
         sys.exit(1) # Force fail
     
     logging.info(f"Found {len(viral_videos)} potential videos")

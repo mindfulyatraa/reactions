@@ -253,7 +253,75 @@ class ViralVideoBot:
             logging.error(f"Error searching YouTube: {e}")
             
         return video_list
-    
+
+    def search_viral_videos_instagram(self):
+        """Search for viral videos on Instagram using web scraping"""
+        # Note: Instagram requires login for video access
+        # This is a basic implementation - may need API or better scraping
+        viral_videos = []
+
+        try:
+            import requests
+            from bs4 import BeautifulSoup
+
+            # Instagram hashtags to search
+            hashtags = ['viral', 'funny', 'cute', 'pets', 'comedy']
+
+            for hashtag in hashtags:
+                try:
+                    # Instagram hashtag page (requires login for full access)
+                    url = f"https://www.instagram.com/explore/tags/{hashtag}/"
+
+                    headers = {
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                        'Accept-Language': 'en-US,en;q=0.5',
+                        'Accept-Encoding': 'gzip, deflate',
+                        'Connection': 'keep-alive',
+                        'Upgrade-Insecure-Requests': '1',
+                    }
+
+                    response = requests.get(url, headers=headers, timeout=10)
+
+                    if response.status_code == 200:
+                        # Basic parsing - Instagram requires JavaScript for full content
+                        # This is limited without proper API access
+                        soup = BeautifulSoup(response.text, 'html.parser')
+
+                        # Look for video links (very basic)
+                        video_links = soup.find_all('a', href=True)
+                        for link in video_links[:3]:  # Limit to 3 per hashtag
+                            href = link['href']
+                            if '/reel/' in href or '/p/' in href:
+                                video_id = href.split('/')[-2]  # Extract ID from URL
+                                full_url = f"https://www.instagram.com{href}"
+
+                                video_info = {
+                                    'id': f"instagram_{video_id}",
+                                    'url': full_url,
+                                    'title': f"Viral Instagram Video #{hashtag}",
+                                    'source': 'instagram',
+                                    'hashtag': hashtag
+                                }
+
+                                if video_info['id'] not in self.processed_videos:
+                                    viral_videos.append(video_info)
+                                    logging.info(f"Found Instagram video: {video_info['title']}")
+                                    break  # Only take 1 per hashtag to avoid duplicates
+
+                    time.sleep(2)  # Rate limiting
+
+                except Exception as e:
+                    logging.error(f"Error searching Instagram hashtag {hashtag}: {str(e)}")
+                    continue
+
+        except ImportError:
+            logging.warning("BeautifulSoup not available for Instagram scraping")
+        except Exception as e:
+            logging.error(f"Error in Instagram search: {str(e)}")
+
+        return viral_videos
+
     def download_video(self, video_info, output_path):
         """Download video using yt-dlp for reliable access"""
         try:
